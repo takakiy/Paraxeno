@@ -3,15 +3,7 @@
 
 ## Fastq format
 
-![Fastq image](images/fastq_code.png)
-
-
-#
-
-
-
-
-### 1. Cleanup of reads
+### 1. CLEANUP of reads
 ```
  rm sample_list.txt; \
  for i in ./fastq/UraH*-dsR_S*_L001_R1_001.fastq.gz; do a=$i; \
@@ -131,94 +123,56 @@
 
 
 
-### 2 CALCULATE FPKM
+### 2. CALCULATE FPKM
 
 ```
 $ R
 
  library(tidyverse)
 
+ dat<-read.table("out_depth_UraH02-A.txt", header=T, sep="\t")
+ colnames(dat)<-c("rname","startpos","endpos","numreads","covbases","coverage","meandepth","meanbaseq","meanmapq")
 
-##   RAW COUNT
-
- dat<-read.table("out_count_tbl.txt", header=T, sep="\t")
- colnames(dat)[1]<-"id"
- dmeta<-read.table("UraHall_clc_A1_ed1_meta.txt", header=T, sep="\t", stringsAsFactors=FALSE)
-
- dlib<-read.table("UraHall_clc_A1_ed1_data.txt", header=T, sep="\t",stringsAsFactors = FALSE)
- libsize<- dlib$readnum
- names(libsize)<- dlib$sample
+ datS <- dat %>% dplyr::mutate(id=rname, Len=endpos, count=numreads) %>% dplyr::select(id,Len,count)
+ Ssize<- sum(dat$numreads)
 
 
- datS <- dat %>% dplyr::mutate( dmeta[match(id,dmeta$con),c("Len","Type")] )
-
-
-countToFpkm <- function(counts, effLen, Ssize)
-{
+ countToFpkm <- function(counts, effLen, Ssize)
+ {
      N <- Ssize
    # N <- sum(counts)
     exp( log(counts) + log(1e9) - log(effLen) - log(N) )
-}
-
-
-
-##   CAL FPKM IN clean reads
-
-
- geneData<- datS %>% dplyr::select(id,Len)
- geneCount<- datS %>% dplyr::select_if( grepl("Ura", names(.)) | grepl("id", names(.)) )
-
- countDf<-data.frame()
-
- j<-0
- countDf<-data.frame()
- countAll_fpkm<-geneData
- meanLen<- 280
-
- for (i in 2:19) {
-
-   j<-j+1
-#   print(i)
-#   print(meanLen[j])
-   libname<- colnames(geneCount)[i]
-   Ssize<- libsize[libname]
-
-   fld<-meanLen
-   countDf<-data.frame(count=geneCount[,i],length=geneData[,2])
-   colnames(countDf)<- c("count","length")
-
-   countDf$effLength <- ifelse(countDf$length > fld, countDf$length - fld + 1,1)
-   countDf$fpkm <- with(countDf, countToFpkm(count, effLength, Ssize))
-
-   countDf_fpkm<- countDf %>% dplyr::select(fpkm)
-
-   countE_fpkm<-data.frame(id=geneData$id,countDf_fpkm)
-
-   countAll_fpkm<-dplyr::right_join(countAll_fpkm, countE_fpkm, by="id")
-
  }
 
- colnames(countAll_fpkm)[3:20]<- colnames(geneCount)[2:19]
 
- write.table(countAll_fpkm,"out_count2fpkm_all.txt", quote=F, row.names=F, col.names=T, appen=F, sep="\t")
 
-    #==> out_count2fpkm_all.txt
+ ## CALCULATION FPKM
+
+ geneData<- datS %>% dplyr::select(id,Len)
+ geneCount<- datS %>% dplyr::select(id,count)
+
+ countDf<-data.frame(id=geneCount$id)
+ fld<- 280
+
+ countDf<-data.frame(count=geneCount$count,length=geneData$Len)
+ colnames(countDf)<- c("count","length")
+
+ countDf$effLength <- ifelse(countDf$length > fld, countDf$length - fld + 1,1)
+ countDf$fpkm <- with(countDf, countToFpkm(count, effLength, Ssize))
+
+
+ write.table(countDf,"out_count2fpkm.txt", quote=F, row.names=F, col.names=T, appen=F, sep="\t")
+
 
 ```
 
-`OUTPUT:`  out_count2fpkm_all.txt
+`OUTPUT:`  out_count2fpkm.txt
 
 
 
-`OUTPUT:` 
-phylogeny-align-to-tree-mafft-fasttree/alignment.qza
-phylogeny-align-to-tree-mafft-fasttree/masked_alignment.qza
-phylogeny-align-to-tree-mafft-fasttree/tree.qza
-phylogeny-align-to-tree-mafft-fasttree/rooted_tree.qza
 
 
-
-### 8 EXPORT DATA (BIOM => COUNT TABLE)
+## XXXXXXXXXXXXXXXXXXX
  
 +   **REPRESENT FAST**  
 
@@ -229,36 +183,8 @@ phylogeny-align-to-tree-mafft-fasttree/rooted_tree.qza
 `OUTPUT:`  
  ./output/dna-sequences.fasta  
 
-+   **COUNT TABLE**  
-      sample-map.txtは、sample-metadata.tsvのヘッダーに#を付加したもの 
-      
-```
- perl -pe 's/sample-id/#sample-id/' sample-metadata.tsv > sample-map.txt
- qiime tools export --input-path table-dada2-nochim.qza --output-path output
- biom convert --to-tsv --table-type "OTU table" \
-       -i ./output/feature-table.biom -o ./output/feature-count-table.txt \
-       -m sample-map.txt
-```
 
-`OUTPUT:`  
- ./output/feature-table.biom   
- ./output/feature-count-table.txt
-
-
-
-
-
-
-# 参照
-
-Qiime2 を用いた 16S rRNA 菌叢解析
-https://qiita.com/keisuke-ota/items/6399b2f2f7459cd9e418
-
-Qiime2やRのPhyloseq、STAMPによる細菌叢解析
-https://qiita.com/kuanl/items/a1f98f76ea5a651753f2
-
-初心者の菌叢解析 Qiime2で解析(10) 多様性解析 ~α多様性~
-https://note.com/nanaimo_/n/n8543a6008acd
+# REFERENCE
 
 
 
