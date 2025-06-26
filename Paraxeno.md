@@ -1,7 +1,7 @@
 
-# DATA PROCESS
+# DATA PROCESSING & RdRP SEARCH
 
-## Fastq format
+## Assembly
 
 ### 1. CLEANUP of reads
 ```
@@ -54,12 +54,28 @@
 
 `OUTPUT:` UraH02_clc_A1_assembly.fna
 
+## RdRP SEARCH
 
+### 1. SEARCH RdRP's contigs
 
-### 3. SEARCH RdRP's contigs
+> [!Note]
+> Search ORFs in contigs
 
 ```
- query="UraH02_clc_A1_assembly_cds.pep"
+ ref="UraH02_clc_A1_assembly.fna"; \
+ name="UraH02_clc_A1";
+
+ $HOME/biotools/local/genome/Prodigal/prodigal -i $ref -m -a ${name}.orfs.faa -d ${name}.orfs.fna -o ${name}.gbk -f gbk -p meta -q -g 11
+
+```
+`OUTPUT:` UraH02_clc_A1.orfs.faa
+
+
+> [!Note]
+> Search RdRP
+
+```
+ query="UraH02_clc_A1.orfs.faa"
 
  ## Pfam
  HMM1="Pfam-A.hmm" 
@@ -80,7 +96,8 @@
 `OUTPUT:` Ura02_clc_A1_pfam_tbl.txt
 
 
-### 4. MERGE CANDIDATE CONTIGS
+### 2. MERGE CANDIDATE CONTIGS
+
    
 ```
  query="UraHall_rdrp.fa"
@@ -93,11 +110,7 @@
 `OUTPUT:` UraHall_rdrp_cdhit.fa
 
 
-
-
 ## ESTIMATE ABUNDANCE OF VIAL CONTIGS
-
-
 
 ### 1. MAPPING
 
@@ -120,7 +133,6 @@
 ```
 
 `OUTPUT:`   out_depth_UraH02-A.txt
-
 
 
 ### 2. CALCULATE FPKM
