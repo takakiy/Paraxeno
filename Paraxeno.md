@@ -65,213 +65,150 @@
 
 
 ### 3. SEARCH RdRP's contigs
-    -V4-V5
 
 ```
-export PATH="/home/impact/biotools/rhel6/miniconda3/bin:$PATH"
-mkdir cleanup; \
- for i in ./pear/*_pear.assembled.fastq; do a=$i; \
-    j=${i##./*/}; k=${j%%_pear.assembled.fastq}; a=$i; echo "$k"; \
- cutadapt -j 12 -e 0.1 -g file:$HOME/Desktop/work_pop/bin/primer_fwd_iupac.fas -n 5 \
-   --minimum-length 100 --discard-untrimmed -o out.fastq $i; \
- cutadapt -j 12 -e 0.1 -a file:$HOME/Desktop/work_pop/bin/primer_rev_iupac_comp.fas -n 5 \
-   --minimum-length 100 --discard-untrimmed -o ./cleanup/${k}_pear_noprim.fq out.fastq; \
- done
+ query="UraH02_clc_A1_assembly_cds.pep"
+
+ ## Pfam
+ HMM1="Pfam-A.hmm" 
+ outname="Ura02_clc_A1_pfam"
+ hmmscan --cpu 2 --cut_ga -o $outname --domtblout $outname $HMM1 $query
+
+ ## Zayed et al 
+ HMM2="all_virus_RdRP_profiles.hmm"  ## 
+ outname="Ura02_clc_A1_rdrpsci"
+ hmmscan --cpu 2 -o $outname --domtblout $outname $HMM1 $query
+
+ ## NeoRdRp
+ HMM3="NeoRdRp.hmm"  ## 
+ outname="Ura02_clc_A1_neordrp"
+ hmmscan --cpu 2 -o $outname --domtblout $outname $HMM1 $query
 ```
 
-    -V4
+`OUTPUT:` Ura02_clc_A1_pfam_tbl.txt
 
 
-```
-export PATH="/home/impact/biotools/rhel6/miniconda3/bin:$PATH"
-mkdir cleanup; \
- for i in ./pear/*_pear.assembled.fastq; do a=$i; \
-    j=${i##./*/}; k=${j%%_pear.assembled.fastq}; a=$i; echo "$k"; \
- cutadapt -j 12 -e 0.1 -g file:$HOME/Desktop/work_pop/bin/primer_fasmac_fwd.fas -n 5 \
-   --minimum-length 100 --discard-untrimmed -o out.fastq $i; \
- cutadapt -j 12 -e 0.1 -a file:$HOME/Desktop/work_pop/bin/primer_fasmac_rev_comp.fas -n 5 \
-   --minimum-length 100 --discard-untrimmed -o ./cleanup/${k}_pear_noprim.fq out.fastq; \
- done
-```
-
-
-`OUTPUT:` ./cleanup/*_pear_noprim.fq
-
-
-### 3. FILTER QC & LENGTH
+### 4. MERGE CANDIDATE CONTIGS
    
 ```
-for i in ./cleanup/*_pear_noprim.fq; do a=$i; \
-    j=${i##./*/}; k=${j%%_pear_noprim.fq}; a=$i; echo "$k"; \
- $HOME/Desktop/work_pop/bin/pickup_qc_fastq.pl -se ./cleanup/${k}_pear_noprim.fq \
-        -qc 30 0.98 -minlen 100 -maxlen 550; \
- mv out_pickup_R1_SE.fq ./cleanup/${k}_pear_noprim_qc.fq; \
- done
+ query="UraHall_rdrp.fa"
+ outname="UraHall_rdrp_cdhit"
+
+ cd-hit-est -d 100 -c 0.97 -aS 0.9 -G 0 -T 20 -M 20000 -i $query -o ${name}_cdhit.fa
 
 ```
 
-`OUTPUT:` ./cleanup/*_pear_noprim_qc.fq
+`OUTPUT:` UraHall_rdrp_cdhit.fa
 
 
-> [!Tip]
-> Count of reads
 
-```
- files=`ls ./cleanup/*_pear_noprim_qc.fq`
- ${HOME}/biotools/local/assembly/bin/seqkit stats $files > out.txt
 
- perl -F'\s+' -anle 'BEGIN{ $info={}; } next if (/^file/);  $file= $1 if ($F[0]=~/.*\/(\S+)$/); $lib= $1 if ($file=~/^(\S+)_pear_noprim_qc.fq/); print "$lib\t$file\t$F[3]\t$F[4]\t$F[6]"; END{ }' out.txt
+## ESTIMATE ABUNDANCE OF VIAL CONTIGS
 
-```
 
-> [!Tip]
-> Statics of reads
+
+### 1. MAPPING
 
 ```
-manu_fastq.pl -e stat -s ./cleanup/XXX_pear_noprim_qc.fq
+ read="UraH02-A_PP_R1.fq.gz"
+
+ query="UraHall_rdrp_cdhit.fa"
+
+ alname="UraH02-A"
+
+ bbmap.sh -Xmx20g in1=$read in2=${read/_R1/_R2} ref=$ref out=${alname}.sam minid=0.97 maxindel=3
+
+ samtools view -@ 20 -hb -o ${alname}.bam ${alname}.sam
+ samtools sort -@ 20 -o ${alname}.sort.bam ${alname}.bam
+ samtools index ${alname}.sort.bam
+
+   # CALCULATION COVERGAE
+ samtools coverage ${alname}.sort.bam > out_depth_${alname}.txt
 
 ```
 
+`OUTPUT:`   out_depth_UraH02-A.txt
 
-## QIIME2
 
 
-```
-conda3
-conda activate qiime2-amplicon-2024.5
-
-(qiime2-amplicon-2024.5) mkdir qiime
-(qiime2-amplicon-2024.5) cd ./qiime
-```
-
-### 1 MAKE sample-manufest
+### 2 CALCULATE FPKM
 
 ```
-echo -e "sample-id\tabsolute-filepath" > sample-manufest; \
-  echo -e "sample-id\tocean\tpublish" > sample-metadata.tsv; \
- for i in ../cleanup/*_pear_noprim_qc.fq; do j=${i##../*/}; \
-   k=${j%%_pear_noprim_qc.fq}; id=${k//-/.};
-   dir=$( cd ${i%/*_pear_noprim_qc.fq}; pwd); abpath="${dir}/${j}"; \
-   echo "${id} $abpath"; \
-  echo -e "${id}\txxx\tyyy" >> sample-metadata.tsv; \
-  echo -e "${id}\t$abpath" >> sample-manufest; \
-  done
-```
+$ R
 
-`OUTPUT:`   
-sample-manufest        ###  サンプルIDとfastqのPATH  
-sample-metadata.tsv    ###  サンプルIDとメタ情報  
-
-### 2 IMPORT FASTQ
-
-```
-qiime tools import --type SampleData[SequencesWithQuality] \
- --input-path sample-manufest \
- --output-path sequence.qza \
- --input-format SingleEndFastqManifestPhred33V2
-```
-
-`OUTPUT:`  
-sequence.qza
+ library(tidyverse)
 
 
-### 3 DADA2
+##   RAW COUNT
 
-```
-qiime dada2 denoise-single \
- --i-demultiplexed-seqs sequence.qza \
- --p-trim-left 0 \
- --p-trunc-len 0 \
- --o-representative-sequences rep-seqs-dada2.qza \
- --o-table table-dada2.qza \
- --o-denoising-stats stats-dada2.qza \
- --p-n-reads-learn 100000 \
- --p-n-threads 24
-```
+ dat<-read.table("out_count_tbl.txt", header=T, sep="\t")
+ colnames(dat)[1]<-"id"
+ dmeta<-read.table("UraHall_clc_A1_ed1_meta.txt", header=T, sep="\t", stringsAsFactors=FALSE)
 
-`OUTPUT:`  
- rep-seqs-dada2.qza  
- table-dada2.qza  
+ dlib<-read.table("UraHall_clc_A1_ed1_data.txt", header=T, sep="\t",stringsAsFactors = FALSE)
+ libsize<- dlib$readnum
+ names(libsize)<- dlib$sample
+
+
+ datS <- dat %>% dplyr::mutate( dmeta[match(id,dmeta$con),c("Len","Type")] )
+
+
+countToFpkm <- function(counts, effLen, Ssize)
+{
+     N <- Ssize
+   # N <- sum(counts)
+    exp( log(counts) + log(1e9) - log(effLen) - log(N) )
+}
 
 
 
-### 4 CHIMERA
- Identifying and filtering chimeric feature sequences with q2-vsearch
-
-```
-qiime vsearch uchime-denovo \
-  --i-table table-dada2.qza \
-  --i-sequences rep-seqs-dada2.qza \
-  --output-dir uchime-dn-out
-```
-
-`OUTPUT:`  
-  ./uchime-dn-out/nonchimeras.qza  
-  ./uchime-dn-out/chimeras.qza  
-  ./uchime-dn-out/stats.qza  
-
-```
-qiime feature-table filter-features \
-  --i-table table-dada2.qza \
-  --m-metadata-file uchime-dn-out/chimeras.qza \
-  --p-exclude-ids \
-  --o-filtered-table uchime-dn-out/table-nonchimeric-w-borderline.qza
- qiime feature-table filter-seqs \
-  --i-data rep-seqs-dada2.qza \
-  --m-metadata-file uchime-dn-out/chimeras.qza \
-  --p-exclude-ids \
-  --o-filtered-data uchime-dn-out/rep-seqs-nonchimeric-w-borderline.qza
- qiime feature-table summarize \
-  --i-table uchime-dn-out/table-nonchimeric-w-borderline.qza \
-  --o-visualization uchime-dn-out/table-nonchimeric-w-borderline.qzv
-  
-  mv ./uchime-dn-out/table-nonchimeric-w-borderline.qza table-dada2-nochim.qza
-  mv ./uchime-dn-out/rep-seqs-nonchimeric-w-borderline.qza rep-seqs-dada2-nochim.qza
-```
-
-`OUTPUT:`  
-  table-dada2-nochim.qza  
-  rep-seqs-dada2-nochim.qza  
+##   CAL FPKM IN clean reads
 
 
-### 5 CLUSTERING (OTU)
+ geneData<- datS %>% dplyr::select(id,Len)
+ geneCount<- datS %>% dplyr::select_if( grepl("Ura", names(.)) | grepl("id", names(.)) )
+
+ countDf<-data.frame()
+
+ j<-0
+ countDf<-data.frame()
+ countAll_fpkm<-geneData
+ meanLen<- 280
+
+ for (i in 2:19) {
+
+   j<-j+1
+#   print(i)
+#   print(meanLen[j])
+   libname<- colnames(geneCount)[i]
+   Ssize<- libsize[libname]
+
+   fld<-meanLen
+   countDf<-data.frame(count=geneCount[,i],length=geneData[,2])
+   colnames(countDf)<- c("count","length")
+
+   countDf$effLength <- ifelse(countDf$length > fld, countDf$length - fld + 1,1)
+   countDf$fpkm <- with(countDf, countToFpkm(count, effLength, Ssize))
+
+   countDf_fpkm<- countDf %>% dplyr::select(fpkm)
+
+   countE_fpkm<-data.frame(id=geneData$id,countDf_fpkm)
+
+   countAll_fpkm<-dplyr::right_join(countAll_fpkm, countE_fpkm, by="id")
+
+ }
+
+ colnames(countAll_fpkm)[3:20]<- colnames(geneCount)[2:19]
+
+ write.table(countAll_fpkm,"out_count2fpkm_all.txt", quote=F, row.names=F, col.names=T, appen=F, sep="\t")
+
+    #==> out_count2fpkm_all.txt
 
 ```
-qiime vsearch cluster-features-de-novo \
- --i-table table-dada2-nochim.qza \
- --i-sequences rep-seqs-dada2-nochim.qza \
- --p-perc-identity 0.97 \
- --o-clustered-table table-dn-97.qza \
- --o-clustered-sequences rep-seqs-dn-97.qza \
- --p-threads 16
-```
 
-`OUTPUT:`  
-  table-dn-97.qza  
-  rep-seqs-dn-97.qza  
+`OUTPUT:`  out_count2fpkm_all.txt
 
 
-### 6 TAXONOMY ASSIGNMENT
-
-```
-qiime feature-classifier classify-sklearn \
-  --i-classifier $HOME/biotools/local/population/qiime2/ref/qiime2-amplicon-2024.5/SILVA_138.2_SSURef_NR99_tax_silva_trunc-classifier.qza \
-  --i-reads rep-seqs-dada2-nochim.qza \
-  --p-n-jobs 24 \
-  --o-classification taxonomy.qza
-```
-
-### 7 BUILD TREE
-
-```
- qiime phylogeny align-to-tree-mafft-fasttree \
-  --i-sequences rep-seqs-dada2-nochim.qza \
-  --o-alignment aligned-rep-seqs.qza \
-  --o-masked-alignment masked-aligned-rep-seqs.qza \
-  --o-tree unrooted-tree.qza \
-  --o-rooted-tree rooted-tree.qza
-
-```
 
 `OUTPUT:` 
 phylogeny-align-to-tree-mafft-fasttree/alignment.qza
@@ -307,85 +244,8 @@ phylogeny-align-to-tree-mafft-fasttree/rooted_tree.qza
  ./output/feature-table.biom   
  ./output/feature-count-table.txt
 
-+   **TAXONOMY ASSIGMENT**  
-
-```
- qiime tools export --input-path taxonomy.qza --output-path output
-```
-
-`OUTPUT:`  
- ./output/taxonomy.tsv
-
-+   **ADDING TAXON IN COUNT TABLE**  
-
-```
- perl -i -pe 's/Feature ID/OTU/' ./output/taxonomy.tsv
- perl -i -pe 's/#OTU ID/OTU/' ./output/feature-count-table.txt
-
- $HOME/Desktop/work_genome/bin/adding_info_list.pl -i ./output/feature-count-table.txt \
-       -a ./output/taxonomy.tsv -key 0 0 -val 1
-```
-
-`OUTPUT:`  
-        out_feature-count-table.txt
 
 
-+   **CONVERT INTO ASV NAME**  
-
-```
- perl -F'\t' -anle 'BEGIN{ $info={}; $no= 0; open(OUT,">out_asv_convert.lst.txt"); } if (/>(\S+)/) { $name=$1; $no++; $num=sprintf("%.5u",$no); $nname="ASV".$num; print ">$nname"; print OUT "$name\t$nname"; } else { print "$_"; } END{ }' ./output/dna-sequences.fasta > out_asv_dna-sequences.fasta
-```
-
-`OUTPUT:`  
- out_asv_dna-sequences.fasta
- out_asv_convert.lst.txt
-
-+   **ADDING ASV & LENGTH**   
-
-```
- gc_contentSkew.pl -if out_asv_dna-sequences.fasta -p gc
- $HOME/Desktop/work_genome/bin/adding_info_list.pl -i out_asv_convert.lst.txt \
-       -a outgc -key 1 0 -val 1
-```
-
-`OUTPUT:`  
-  out_out_asv_convert.lst.txt
-
-```
- perl -F'\t' -anle 'BEGIN{ $info={}; open(LI,"out_out_asv_convert.lst.txt"); while(<LI>) { chomp; @item=split/\t/; $info->{$item[0]}=[@item[1..2]]; }  } if($F[0] eq "OTU") { print (join "\t",@F,"asv","len"); } else { @ii= @{$info->{$F[0]}}; print (join "\t",@F,@ii); } END{ }' out_feature-count-table.txt > out_asv_feature-count-table.txt
-```
-
-`OUTPUT:`  
-       out_asv_feature-count-table.txt
-
-
-
-
-+   **Visualize summary stats**  
-
-```
-qiime metadata tabulate \
-  --m-input-file stats-dada2.qza \
-  --o-visualization stats.dada2.qzv
-```
-
-
-```
-
-+   **Visualize Bar PLOT**  
-
- qiime taxa barplot \
- --i-table table-dada2-nochim.qza \
- --i-taxonomy taxonomy.qza \
- --m-metadata-file sample-metadata.tsv \
- --o-visualization taxa-bar-plots.qzv
-
-    #==> taxa-bar-plots.qzv
-
-```
-
-xxxx.qzvを  https://view.qiime2.org  へPUT
-  
 
 
 
