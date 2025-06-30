@@ -12,7 +12,7 @@
  echo -e "$i\t${i/_R1/_R2}\t$k" >> sample_list.txt; \
  done
 
- ./Cleanup_FLDS_YT220418.pl -lst sample_list.txt -lib FLDS -outdir cleanup
+ ./Cleanup_FLDS.pl -lst sample_list.txt -lib FLDS -outdir cleanup
 
 ```
 
@@ -110,7 +110,7 @@
 `OUTPUT:` UraHall_rdrp_cdhit.fa
 
 
-## ESTIMATE ABUNDANCE OF VIAL CONTIGS
+## ESTIMATE ABUNDANCE OF VIRAL CONTIGS
 
 ### 1. MAPPING
 
@@ -179,24 +179,6 @@ $ R
 ```
 
 `OUTPUT:`  out_count2fpkm.txt
-
-
-
-
-
-## XXXXXXXXXXXXXXXXXXX
- 
-+   **REPRESENT FAST**  
-
-```
- qiime tools export --input-path rep-seqs-dada2-nochim.qza --output-path output
-```
-
-`OUTPUT:`  
- ./output/dna-sequences.fasta  
-
-
-# REFERENCE
 
 
 
